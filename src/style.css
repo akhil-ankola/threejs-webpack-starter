@@ -9,6 +9,12 @@ body
 {
     height: 100vh;
     font-family: 'Poppins';
+    background: cadetblue;
+}
+
+h1{
+    /* position: absolute; */
+    color: blue;
 }
 
 .webgl

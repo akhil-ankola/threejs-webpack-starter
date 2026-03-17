@@ -2,6 +2,12 @@ import './style.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import * as dat from 'dat.gui'
+import { ShapeBufferGeometry } from 'three'
+
+//Loading
+const textureLoader = new THREE.TextureLoader()
+
+const normalTexture = textureLoader.load('/image/World.png')
 
 // Debug
 const gui = new dat.GUI()
@@ -13,12 +19,18 @@ const canvas = document.querySelector('canvas.webgl')
 const scene = new THREE.Scene()
 
 // Objects
-const geometry = new THREE.TorusGeometry( .7, .2, 16, 100 );
+// const geometry = new THREE.TorusGeometry( .7, .2, 16, 100 );
+const geometry = new THREE.SphereBufferGeometry(0.5, 64, 64)
 
 // Materials
 
-const material = new THREE.MeshBasicMaterial()
-material.color = new THREE.Color(0xff0000)
+const material = new THREE.MeshStandardMaterial()
+material.metalness = 0.7
+material.roughness = 0.2
+// material.normalMap = textureLoader
+material.normalMap = normalTexture;
+
+material.color = new THREE.Color(0x292900)
 
 // Mesh
 const sphere = new THREE.Mesh(geometry,material)
@@ -30,6 +42,14 @@ const pointLight = new THREE.PointLight(0xffffff, 0.1)
 pointLight.position.x = 2
 pointLight.position.y = 3
 pointLight.position.z = 4
+scene.add(pointLight)
+
+const pointLight2 = new THREE.PointLight(0xff0000, 2)
+// pointLight.position.x = 2
+// pointLight.position.y = 3
+// pointLight.position.z = 4
+pointLight2.position.set(1,1,1);
+
 scene.add(pointLight)
 
 /**
@@ -73,7 +93,8 @@ scene.add(camera)
  * Renderer
  */
 const renderer = new THREE.WebGLRenderer({
-    canvas: canvas
+    canvas: canvas,
+    alpha: true
 })
 renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))

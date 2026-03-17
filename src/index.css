@@ -1,0 +1,9 @@
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { margin: 0; padding: 0; height: 100%; width: 100%; }
+body { font-family: 'Inter','Segoe UI',system-ui,-apple-system,sans-serif; -webkit-font-smoothing: antialiased; }
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #d1d5db; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
