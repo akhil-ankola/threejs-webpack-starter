@@ -1,28 +1,40 @@
 import { createContext, useContext, useState, useRef } from "react";
 import { initPages, mkEl, mkPage, mkSection, mkSectionFromTemplate } from "../utils/factories";
+import { useSavePage } from "../hooks/useSavePage";
+import { deletePage, downloadPageJSON, downloadAllPagesJSON } from "../services/pageService";
 
 const PageBuilderContext = createContext(null);
 
 export function PageBuilderProvider({ children }) {
+  // ── Core data ──
   const [pages, setPages] = useState(initPages);
 
-  const [selPageId, setSelPageId] = useState(null);
+  // ── Selection ──
+  const [selPageId, setSelPageId]     = useState(null);
   const [selSectionId, setSelSectionId] = useState(null);
-  const [selElInfo, setSelElInfo] = useState(null);
+  const [selElInfo, setSelElInfo]       = useState(null);
 
-  const [sideTab, setSideTab] = useState("pages");
+  // ── UI state ──
+  const [sideTab, setSideTab]           = useState("pages");
   const [showElPicker, setShowElPicker] = useState(null);
   const [showSectionPicker, setShowSectionPicker] = useState(false);
-  const [showNewPage, setShowNewPage] = useState(false);
+  const [showNewPage, setShowNewPage]   = useState(false);
   const [newPageInput, setNewPageInput] = useState("");
 
-  const elDragRef = useRef(null);
+  // ── Drag: elements ──
+  const elDragRef  = useRef(null);
   const [dragOverElId, setDragOverElId] = useState(null);
-  const secDragRef = useRef(null);
-  const [secDragOver, setSecDragOver] = useState(null);
 
-  // ── Derived ──
-  const selPage = pages.find((p) => p.id === selPageId) || null;
+  // ── Drag: sections ──
+  const secDragRef = useRef(null);
+  const [secDragOver, setSecDragOver]   = useState(null);
+
+  // ── Persistence (Phase 3) ──
+  const { saveStatus, lastSavedAt, isLoading, saveCurrentPage, saveAll } =
+    useSavePage(pages, setPages, selPageId);
+
+  // ── Derived ──────────────────────────────────────────────────
+  const selPage    = pages.find((p) => p.id === selPageId) || null;
   const selSection = selPage?.sections.find((s) => s.id === selSectionId) || null;
 
   const findElInPage = (page, elId) => {
@@ -42,9 +54,9 @@ export function PageBuilderProvider({ children }) {
   };
 
   const selElFound = selElInfo && selPage ? findElInPage(selPage, selElInfo.elId) : null;
-  const selEl = selElFound?.el || null;
+  const selEl      = selElFound?.el || null;
 
-  // ── Page actions ──
+  // ── Page actions ──────────────────────────────────────────────
   const selectPage = (id) => {
     setSelPageId(id);
     setSelSectionId(null);
@@ -61,49 +73,59 @@ export function PageBuilderProvider({ children }) {
     selectPage(page.id);
   };
 
-  // ── Section actions ──
-  // Opens the section picker modal instead of adding a blank section directly
-  const openSectionPicker = () => setShowSectionPicker(true);
+  // Delete page from React state AND storage
+  const removePageById = async (pageId) => {
+    await deletePage(pageId);
+    setPages((prev) => prev.filter((p) => p.id !== pageId));
+    if (selPageId === pageId) {
+      setSelPageId(null);
+      setSelSectionId(null);
+      setSelElInfo(null);
+      setSideTab("pages");
+    }
+  };
 
-  // Called by SectionPicker after user selects a template
+  // ── Download helpers (delegate to service) ──────────────────
+  const downloadCurrent = () => {
+    if (selPage) downloadPageJSON(selPage);
+  };
+
+  const downloadAll = () => {
+    downloadAllPagesJSON(pages);
+  };
+
+  // ── Section actions ──────────────────────────────────────────
+  const openSectionPicker = () => setShowSectionPicker(true);
+  const addSection        = () => openSectionPicker();
+
   const addSectionFromTemplate = (templateKey) => {
     const s = mkSectionFromTemplate(templateKey);
     setPages((prev) =>
-      prev.map((p) =>
-        p.id !== selPageId ? p : { ...p, sections: [...p.sections, s] }
-      )
+      prev.map((p) => p.id !== selPageId ? p : { ...p, sections: [...p.sections, s] })
     );
     setSelSectionId(s.id);
     setSelElInfo(null);
   };
 
-  // Legacy: still used internally if needed
-  const addSection = () => openSectionPicker();
-
   const updateSection = (sec) =>
     setPages((prev) =>
       prev.map((p) =>
-        p.id !== selPageId
-          ? p
-          : { ...p, sections: p.sections.map((s) => (s.id === sec.id ? sec : s)) }
+        p.id !== selPageId ? p :
+        { ...p, sections: p.sections.map((s) => s.id === sec.id ? sec : s) }
       )
     );
 
   const deleteSection = (id) => {
     setPages((prev) =>
       prev.map((p) =>
-        p.id !== selPageId
-          ? p
-          : { ...p, sections: p.sections.filter((s) => s.id !== id) }
+        p.id !== selPageId ? p :
+        { ...p, sections: p.sections.filter((s) => s.id !== id) }
       )
     );
-    if (selSectionId === id) {
-      setSelSectionId(null);
-      setSelElInfo(null);
-    }
+    if (selSectionId === id) { setSelSectionId(null); setSelElInfo(null); }
   };
 
-  // ── Element actions ──
+  // ── Element actions ──────────────────────────────────────────
   const handleAddEl = (sectionId, colIdx) => setShowElPicker({ sectionId, colIdx });
 
   const pickElement = (type) => {
@@ -193,7 +215,7 @@ export function PageBuilderProvider({ children }) {
     setSelElInfo(null);
   };
 
-  // ── Drag actions ──
+  // ── Drag actions ──────────────────────────────────────────────
   const handleDragEl = () => { setDragOverElId(null); elDragRef.current = null; };
 
   const handleDragSection = () => {
@@ -214,28 +236,49 @@ export function PageBuilderProvider({ children }) {
     setSecDragOver(null);
   };
 
+  // ── Context value ─────────────────────────────────────────────
   const value = {
+    // Data
     pages,
     selPageId, selPage,
     selSectionId, selSection,
     selElInfo, selEl,
+
+    // UI state
     sideTab,
     showElPicker, showSectionPicker,
     showNewPage, newPageInput,
     dragOverElId, secDragOver,
     elDragRef, secDragRef,
 
+    // Save / load state (Phase 3)
+    saveStatus,
+    lastSavedAt,
+    isLoading,
+
+    // Setters
     setSideTab,
     setSelSectionId, setSelElInfo,
     setShowElPicker, setShowSectionPicker,
     setShowNewPage, setNewPageInput,
     setDragOverElId, setSecDragOver,
 
-    selectPage, addPage,
+    // Page actions
+    selectPage, addPage, removePageById,
+
+    // Save / download actions (Phase 3)
+    saveCurrentPage, saveAll,
+    downloadCurrent, downloadAll,
+
+    // Section actions
     addSection, openSectionPicker, addSectionFromTemplate,
     updateSection, deleteSection,
+
+    // Element actions
     handleAddEl, pickElement,
     updateEl, deleteEl,
+
+    // Drag actions
     handleDragEl, handleDragSection,
   };
 
