@@ -1,45 +1,30 @@
 import { createContext, useContext, useState, useRef } from "react";
-import { initPages, mkEl, mkPage, mkSection } from "../utils/factories";
+import { initPages, mkEl, mkPage, mkSection, mkSectionFromTemplate } from "../utils/factories";
 
-// ─────────────────────────────────────────────────────────────
-// CONTEXT CREATION
-// ─────────────────────────────────────────────────────────────
 const PageBuilderContext = createContext(null);
 
-// ─────────────────────────────────────────────────────────────
-// PROVIDER
-// Owns all state. Exports a clean action API consumed via hook.
-// ─────────────────────────────────────────────────────────────
 export function PageBuilderProvider({ children }) {
-  // ── Core data ──
   const [pages, setPages] = useState(initPages);
 
-  // ── Selection ──
   const [selPageId, setSelPageId] = useState(null);
   const [selSectionId, setSelSectionId] = useState(null);
-  const [selElInfo, setSelElInfo] = useState(null); // { elId, sectionId, colIdx }
+  const [selElInfo, setSelElInfo] = useState(null);
 
-  // ── UI state ──
   const [sideTab, setSideTab] = useState("pages");
-  const [showElPicker, setShowElPicker] = useState(null); // { sectionId, colIdx }
+  const [showElPicker, setShowElPicker] = useState(null);
+  const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [showNewPage, setShowNewPage] = useState(false);
   const [newPageInput, setNewPageInput] = useState("");
 
-  // ── Drag: elements ──
-  const elDragRef = useRef(null); // { elId, sectionId, colIdx }
+  const elDragRef = useRef(null);
   const [dragOverElId, setDragOverElId] = useState(null);
-
-  // ── Drag: sections ──
   const secDragRef = useRef(null);
   const [secDragOver, setSecDragOver] = useState(null);
 
-  // ─────────────────────────────────────────────────────────────
-  // DERIVED STATE
-  // ─────────────────────────────────────────────────────────────
+  // ── Derived ──
   const selPage = pages.find((p) => p.id === selPageId) || null;
   const selSection = selPage?.sections.find((s) => s.id === selSectionId) || null;
 
-  /** Finds a selected element, supports nested columns */
   const findElInPage = (page, elId) => {
     for (const sec of page.sections) {
       const el = sec.elements.find((e) => e.id === elId);
@@ -59,9 +44,7 @@ export function PageBuilderProvider({ children }) {
   const selElFound = selElInfo && selPage ? findElInPage(selPage, selElInfo.elId) : null;
   const selEl = selElFound?.el || null;
 
-  // ─────────────────────────────────────────────────────────────
-  // PAGE ACTIONS
-  // ─────────────────────────────────────────────────────────────
+  // ── Page actions ──
   const selectPage = (id) => {
     setSelPageId(id);
     setSelSectionId(null);
@@ -78,11 +61,13 @@ export function PageBuilderProvider({ children }) {
     selectPage(page.id);
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // SECTION ACTIONS
-  // ─────────────────────────────────────────────────────────────
-  const addSection = () => {
-    const s = mkSection();
+  // ── Section actions ──
+  // Opens the section picker modal instead of adding a blank section directly
+  const openSectionPicker = () => setShowSectionPicker(true);
+
+  // Called by SectionPicker after user selects a template
+  const addSectionFromTemplate = (templateKey) => {
+    const s = mkSectionFromTemplate(templateKey);
     setPages((prev) =>
       prev.map((p) =>
         p.id !== selPageId ? p : { ...p, sections: [...p.sections, s] }
@@ -91,6 +76,9 @@ export function PageBuilderProvider({ children }) {
     setSelSectionId(s.id);
     setSelElInfo(null);
   };
+
+  // Legacy: still used internally if needed
+  const addSection = () => openSectionPicker();
 
   const updateSection = (sec) =>
     setPages((prev) =>
@@ -115,17 +103,13 @@ export function PageBuilderProvider({ children }) {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // ELEMENT ACTIONS
-  // ─────────────────────────────────────────────────────────────
-  const handleAddEl = (sectionId, colIdx) =>
-    setShowElPicker({ sectionId, colIdx });
+  // ── Element actions ──
+  const handleAddEl = (sectionId, colIdx) => setShowElPicker({ sectionId, colIdx });
 
   const pickElement = (type) => {
     if (!showElPicker) return;
     const { sectionId, colIdx } = showElPicker;
     const el = mkEl(type);
-
     setPages((prev) =>
       prev.map((p) => {
         if (p.id !== selPageId) return p;
@@ -133,26 +117,18 @@ export function PageBuilderProvider({ children }) {
           ...p,
           sections: p.sections.map((s) => {
             if (s.id !== sectionId) return s;
-            // Top-level element
             if (colIdx === null) return { ...s, elements: [...s.elements, el] };
-            // Inside a columns widget
             return {
               ...s,
               elements: s.elements.map((e) => {
                 if (e.type !== "columns") return e;
-                return {
-                  ...e,
-                  children: e.children.map((col, ci) =>
-                    ci === colIdx ? [...col, el] : col
-                  ),
-                };
+                return { ...e, children: e.children.map((col, ci) => ci === colIdx ? [...col, el] : col) };
               }),
             };
           }),
         };
       })
     );
-
     setSelElInfo({ elId: el.id, sectionId, colIdx });
     setSelSectionId(sectionId);
     setShowElPicker(null);
@@ -168,12 +144,7 @@ export function PageBuilderProvider({ children }) {
           sections: p.sections.map((s) => {
             if (s.id !== info.sectionId) return s;
             if (info.colIdx === null)
-              return {
-                ...s,
-                elements: s.elements.map((e) =>
-                  e.id === updated.id ? updated : e
-                ),
-              };
+              return { ...s, elements: s.elements.map((e) => e.id === updated.id ? updated : e) };
             return {
               ...s,
               elements: s.elements.map((e) => {
@@ -181,9 +152,7 @@ export function PageBuilderProvider({ children }) {
                 return {
                   ...e,
                   children: e.children.map((col, ci) =>
-                    ci === info.colIdx
-                      ? col.map((ce) => (ce.id === updated.id ? updated : ce))
-                      : col
+                    ci === info.colIdx ? col.map((ce) => ce.id === updated.id ? updated : ce) : col
                   ),
                 };
               }),
@@ -204,10 +173,7 @@ export function PageBuilderProvider({ children }) {
           sections: p.sections.map((s) => {
             if (s.id !== info.sectionId) return s;
             if (info.colIdx === null)
-              return {
-                ...s,
-                elements: s.elements.filter((e) => e.id !== info.elId),
-              };
+              return { ...s, elements: s.elements.filter((e) => e.id !== info.elId) };
             return {
               ...s,
               elements: s.elements.map((e) => {
@@ -215,9 +181,7 @@ export function PageBuilderProvider({ children }) {
                 return {
                   ...e,
                   children: e.children.map((col, ci) =>
-                    ci === info.colIdx
-                      ? col.filter((ce) => ce.id !== info.elId)
-                      : col
+                    ci === info.colIdx ? col.filter((ce) => ce.id !== info.elId) : col
                   ),
                 };
               }),
@@ -229,20 +193,11 @@ export function PageBuilderProvider({ children }) {
     setSelElInfo(null);
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // DRAG ACTIONS
-  // ─────────────────────────────────────────────────────────────
-  const handleDragEl = () => {
-    setDragOverElId(null);
-    elDragRef.current = null;
-  };
+  // ── Drag actions ──
+  const handleDragEl = () => { setDragOverElId(null); elDragRef.current = null; };
 
   const handleDragSection = () => {
-    if (
-      secDragRef.current &&
-      secDragOver &&
-      secDragRef.current !== secDragOver
-    ) {
+    if (secDragRef.current && secDragOver && secDragRef.current !== secDragOver) {
       setPages((prev) =>
         prev.map((p) => {
           if (p.id !== selPageId) return p;
@@ -259,49 +214,29 @@ export function PageBuilderProvider({ children }) {
     setSecDragOver(null);
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // CONTEXT VALUE
-  // ─────────────────────────────────────────────────────────────
   const value = {
-    // State
     pages,
-    selPageId,
-    selPage,
-    selSectionId,
-    selSection,
-    selElInfo,
-    selEl,
+    selPageId, selPage,
+    selSectionId, selSection,
+    selElInfo, selEl,
     sideTab,
-    showElPicker,
-    showNewPage,
-    newPageInput,
-    dragOverElId,
-    secDragOver,
-    elDragRef,
-    secDragRef,
+    showElPicker, showSectionPicker,
+    showNewPage, newPageInput,
+    dragOverElId, secDragOver,
+    elDragRef, secDragRef,
 
-    // Setters (UI / selection)
     setSideTab,
-    setSelSectionId,
-    setSelElInfo,
-    setShowElPicker,
-    setShowNewPage,
-    setNewPageInput,
-    setDragOverElId,
-    setSecDragOver,
+    setSelSectionId, setSelElInfo,
+    setShowElPicker, setShowSectionPicker,
+    setShowNewPage, setNewPageInput,
+    setDragOverElId, setSecDragOver,
 
-    // Actions
-    selectPage,
-    addPage,
-    addSection,
-    updateSection,
-    deleteSection,
-    handleAddEl,
-    pickElement,
-    updateEl,
-    deleteEl,
-    handleDragEl,
-    handleDragSection,
+    selectPage, addPage,
+    addSection, openSectionPicker, addSectionFromTemplate,
+    updateSection, deleteSection,
+    handleAddEl, pickElement,
+    updateEl, deleteEl,
+    handleDragEl, handleDragSection,
   };
 
   return (
@@ -311,13 +246,8 @@ export function PageBuilderProvider({ children }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// HOOK  (must be used inside PageBuilderProvider)
-// ─────────────────────────────────────────────────────────────
 export function usePageBuilder() {
   const ctx = useContext(PageBuilderContext);
-  if (!ctx) {
-    throw new Error("usePageBuilder must be used within a PageBuilderProvider");
-  }
+  if (!ctx) throw new Error("usePageBuilder must be used within a PageBuilderProvider");
   return ctx;
 }
