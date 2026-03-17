@@ -175,3 +175,44 @@ function _triggerDownload(content, filename) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// ── Phase 4 additions ─────────────────────────────────────────
+
+/**
+ * Load a single page by its URL slug.
+ * Used by the frontend renderer: FrontendPage reads /:slug and calls this.
+ * Future backend: GET /api/pages/slug/:slug
+ *
+ * @param {string} slug
+ * @returns {Promise<Object|null>}
+ */
+export async function loadPageBySlug(slug) {
+  return adapterGet(pageKey(slug));
+}
+
+/**
+ * Check whether a slug is already in use.
+ * Called during new-page creation for real-time validation.
+ *
+ * @param {string} slug
+ * @param {number} [excludeId]  Skip this page ID (for rename flows)
+ * @returns {Promise<boolean>}  true = slug is available
+ */
+export async function isSlugAvailable(slug, excludeId = null) {
+  const idx = await readIndex();
+  return !idx.pages.some(
+    (p) => p.slug === slug && p.id !== excludeId
+  );
+}
+
+/**
+ * Return just the index for the public site nav (no section data).
+ * Identical to getPageIndex — separated for semantic clarity.
+ * Future backend: GET /api/pages/public-index
+ *
+ * @returns {Promise<Array<{ id, name, slug }>>}
+ */
+export async function getPublicPageIndex() {
+  const idx = await readIndex();
+  return idx.pages.map(({ id, name, slug }) => ({ id, name, slug }));
+}
